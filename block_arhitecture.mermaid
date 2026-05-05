@@ -1,0 +1,37 @@
+flowchart LR
+    Dev["Разработчик"]
+    
+    subgraph CI_CD["CI/CD (GitLab)"]
+        A["GitLab CI/CD"]
+        B["GitLab Runner"]
+        C["Container Registry"]
+    end
+    
+    subgraph INFRA["Облачная инфраструктура"]
+        D["Микросервисы"]
+        E["Promtail (логи)"]
+        F["Node Exporter (метрики хоста)"]
+    end
+    
+    subgraph BACKEND["Бэкенд"]
+        G["Loki (логи)"]
+        H["Prometheus (метрики)"]
+    end
+    
+    subgraph UI["Визуализация"]
+        I["Grafana"]
+    end
+
+    Dev -->|"git push"| A
+    A -->|"запуск"| B
+    B -->|"build & push"| C
+    C -->|"деплой"| D
+    
+    D -->|"stdout"| E
+    E -->|"логи"| G
+    D -->|"/metrics"| H
+    F -->|"метрики"| H
+    
+    G -->|"запросы"| I
+    H -->|"запросы"| I
+    I -->|"дашборды"| Dev
