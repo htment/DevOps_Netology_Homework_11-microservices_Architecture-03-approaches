@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  api-gateway:
+      image: nginx:alpine
+      container_name: api-gateway
+      ports:
+        - "8080:80"
+      volumes:
+        - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+      depends_on:
+        - service-a
+        - service-b
+        - service-c
+      networks:
+        - app-network
+      restart: always
+      extra_hosts:
+        - "service-a:host-gateway"
+        - "service-b:host-gateway"
+        - "service-c:host-gateway"
+
+  service-a:
+    image: alpine:latest
+    container_name: service-a
+    command: sh -c "while true; do echo 'Service A INFO - Processing request' | tee /dev/stdout; sleep 5; done"
+    networks:
+      - app-network
+
+  service-b:
+    image: alpine:latest
+    container_name: service-b
+    command: sh -c "while true; do echo 'Service B WARN - High latency' | tee /dev/stdout; sleep 7; done"
+    networks:
+      - app-network
+
+  service-c:
+    image: alpine:latest
+    container_name: service-c
+    command: sh -c "while true; do echo 'Service C ERROR - Connection failed' | tee /dev/stdout; sleep 9; done"
+    networks:
+      - app-network
+
+  # ============================================
+  # FILEBEAT
+  # ============================================
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: filebeat
+    user: root
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - elasticsearch
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ============================================
+  # ELASTICSEARCH — исправления здесь
+  # ============================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=qwerty123456
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      
+      # ← КЛЮЧЕВЫЕ ИСПРАВЛЕНИЯ
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - cluster.routing.allocation.disk.watermark.low=1gb
+      - cluster.routing.allocation.disk.watermark.high=500mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=200mb
+      
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-u", "elastic:qwerty123456", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ============================================
+  # CREATE KIBANA USER — улучшенная версия
+  # ============================================
+  create-kibana-user:
+    image: curlimages/curl:latest   # лучше чем alpine/curl
+    container_name: create-kibana-user
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - app-network
+    command: >
+      sh -c '
+        echo "Waiting for Elasticsearch security index...";
+        for i in $(seq 1 20); do
+          echo "Attempt $i...";
+          curl -s -u elastic:qwerty123456 \
+            -X POST "http://elasticsearch:9200/_security/user/kibana_system/_password" \
+            -H "Content-Type: application/json" \
+            -d "{\"password\":\"qwerty123456\"}" && echo "✅ kibana_system password set" && exit 0;
+          sleep 8;
+        done;
+        echo "❌ Failed to set kibana_system password";
+        exit 1
+      '
+
+  # ============================================
+  # KIBANA
+  # ============================================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "8081:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=qwerty123456
+      - XPACK_SECURITY_ENABLED=false
+      - SERVERNAME=kibana
+    depends_on:
+      create-kibana-user:
+        condition: service_completed_successfully   # ← важно!
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  es-data:
+
+networks:
+  app-network:
+    driver: bridge

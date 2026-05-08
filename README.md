@@ -130,3 +130,104 @@ Prometheus является стандартом де-факто для мони
 ## 
 [Схема](block_arhitecture.mermaid)
 ![alt text](image.png)
+
+
+
+# Задание 3
+
+## 1. Создаем папки для конфигов
+```
+mkdir -p nginx filebeat
+```
+
+берем конфиги  для сервисов nginx и filebeat
+
+## 2. Запускаем все сервисы
+```
+docker compose up -d
+```
+![alt text](image-1.png)
+## 4. Проверяем статус
+```
+docker compose ps
+```
+## 5. Смотрим логи Filebeat (убеждаемся что нет ошибок)
+```
+docker compose logs filebeat
+```
+![alt text](image-3.png)
+## 6. Проверяем что логи попали в Elasticsearch
+```
+curl -u elastic:qwerty123456 "localhost:9200/_cat/indices"
+```
+![alt text](image-2.png)
+## 7. Открываем Kibana
+   - URL: http://localhost:8081
+   - Логин: elastic
+   - Пароль: qwerty123456
+
+
+# Общее здоровье кластера
+GET /_cluster/health
+
+# С детализацией по индексам
+GET /_cluster/health?level=indices
+
+# Максимальная детализация (по шардам)
+GET /_cluster/health?level=shards&pretty
+
+# С детализацией по индексам
+GET /_cluster/health?level=indices
+
+# Максимальная детализация (по шардам)
+GET /_cluster/health?level=shards&pretty
+
+# Все ноды с полезными колонками
+GET /_cat/nodes?v
+
+# Самый удобный набор колонок
+GET /_cat/nodes?v&h=name,ip,node.role,master,heap.percent,ram.percent,cpu,load_1m,disk.used_percent
+
+# + версия и uptime
+GET /_cat/nodes?v&h=name,ip,version,jdk,uptime,master
+
+# Все шарды кластера
+GET /_cat/shards?v
+
+# Только нераспределённые / проблемные
+GET /_cat/shards?v&s=state:desc
+
+# Только красные/жёлтые
+GET /_cat/shards?v&health=red
+GET /_cat/shards?v&health=yellow
+
+# Шарды конкретного индекса
+GET /_cat/shards/название_индекса?v
+# Другие очень полезные команды
+GET /_cat/health?v - Краткое здоровье кластера
+
+GET /_cat/allocation?v - Как распределены шарды по нодам (сколько места занято)
+
+GET /_cat/recovery?v - Процесс восстановления/репликации шардов
+
+GET /_cat/thread_pool?v - Состояние тредпулов (очереди, отказано)
+
+GET /_cat/fielddata?v - Использование fielddata (может жрать память)
+
+GET /_cat/segments?v - Количество сегментов (важно для оптимизации)
+
+GET /_nodes/stats?pretty - Полная статистика по нодам (JVM, OS, indices и т.д.)
+
+GET /_cluster/state?filter_path=master_node,nodes - Кто мастер и список нод
+
+![alt text](image-4.png)
+
+#Настроим индексы
+
+![alt text](image-5.png)
+
+Зайдем в Dicover
+![alt text](image-6.png)
+
+поищем
+ ![alt text](image-7.png)
